@@ -1,291 +1,270 @@
-# parser.py - Zabar V3 - Manager + Bank Engines
-# Manager ka kaam: Bank ka naam lo -> Us bank ka engine chalao
-# FAB Engine ka kaam: Sirf data idhar se udhar karna, bank check nahi karna
-
 import os
 import re
-from pypdf import PdfReader
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 import pandas as pd
-from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.utils import get_column_letter
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
-# ============================================================
-# MANAGER - ROUTER
-# ============================================================
 
-def process_statement(pdf_path, output_excel, bank_code="FAB", is_pro=False):
-    """
-    Manager: Bank code ke hisab se us bank ka engine chalao
-    bank_code: FAB, ADCB, NBD ...
-    """
-    bank_code = str(bank_code).upper().strip()
-
-    if bank_code == "FAB":
-        return fab_engine(pdf_path, output_excel, is_pro=is_pro)
-    elif bank_code == "ADCB":
-        return {"error": "ADCB is coming soon. Right now only FAB works."}
-    elif bank_code == "NBD":
-        return {"error": "【entity-Emirates NBD¦canonical_name=Emirates NBD】 is coming soon. Right now only FAB works."}
-    else:
-        # Default: FAB samjho, taake purani file bhi chale
-        return fab_engine(pdf_path, output_excel, is_pro=is_pro)
-
-# Purane naam ke liye bhi kaam kare - taake purana code na toote
 def process_fab_pdf(pdf_path, output_excel, is_pro=False):
-    return fab_engine(pdf_path, output_excel, is_pro=is_pro)
-
-# ============================================================
-# HELPERS - Category + Amount
-# ============================================================
-
-def get_category(desc):
-    d = str(desc).upper()
-    if any(x in d for x in ["SALARY", "PAYROLL", "WPS", "WAGES"]):
-        return "Salary"
-    if any(x in d for x in ["ATM", "CASH WITHDRAWAL"]):
-        return "ATM"
-    if any(x in d for x in ["POS", "CARD", "VISA", "MASTERCARD"]):
-        return "Card"
-    if any(x in d for x in ["FEE", "CHARGE", "COMMISSION", "VAT"]):
-        return "Fees"
-    if any(x in d for x in ["TRANSFER", "TRF", "REMITTANCE", "WIRE"]):
-        return "Transfer"
-    if any(x in d for x in ["INTEREST", "PROFIT"]):
-        return "Interest"
-    if any(x in d for x in ["LOAN", "EMI", "INSTALLMENT"]):
-        return "Loan"
-    if any(x in d for x in ["CHEQUE", "CHK"]):
-        return "Cheque"
-    return "Other"
-
-def clean_amount(s):
-    if s is None:
-        return 0.0
-    s = str(s).replace(",", "").replace("AED", "").replace("AED", "").strip()
-    is_neg = False
-    if "(" in s and ")" in s:
-        is_neg = True
-        s = s.replace("(", "").replace(")", "")
-    # -1,234.00 ya 1,234.00-
-    if s.startswith("-"):
-        is_neg = True
-        s = s.replace("-", "")
-    if s.endswith("-"):
-        is_neg = True
-        s = s.replace("-", "")
+    """FAB Bank Statement Parser - Fully Optimized & Bulletproofed."""
     try:
-        val = float(s)
-        return -val if is_neg else val
-    except:
-        return 0.0
+        # 1. File & Encryption Check
+        if not os.path.exists(pdf_path):
+            return {"status": "error", "message": "PDF file not found on server."}
 
-# ============================================================
-# FAB ENGINE - Sirf Data Idhar Se Udhar
-# Bank check NAHI karega - User ne pehle hi FAB bol diya hai
-# ============================================================
-
-def fab_engine(pdf_path, output_excel, is_pro=False):
-    try:
-        reader = PdfReader(pdf_path)
-    except Exception as e:
-        if "password" in str(e).lower() or "encrypted" in str(e).lower():
-            return {"error": "This PDF is password-protected. Please remove password and try again."}
-        return {"error": f"Could not read PDF: {str(e)}"}
-
-    if reader.is_encrypted:
-        return {"error": "This PDF is password-protected. Please remove password and try again."}
-
-    total_pages = len(reader.pages)
-    if total_pages == 0:
-        return {"error": "PDF is empty."}
-
-    processed_pages = total_pages if is_pro else min(3, total_pages)
-    locked_pages = total_pages - processed_pages
-
-    # ---------- PAGE 1 - Metadata (Narm wala, FAB check nahi) ----------
-    first_text = ""
-    try:
-        first_text = reader.pages[0].extract_text() or ""
-    except:
-        first_text = ""
-
-    # Scanned check - agar text hi nahi hai to scanned hai
-    if len(first_text.strip()) < 50:
-        return {"error": "This looks like a scanned PDF. Only digital PDF works, the one you download from bank."}
-
-    # FAB check HATA DIYA - User ne pehle hi FAB select kiya hai
-    # Ab sirf metadata nikalenge, agar mile to, warna khali chhor denge
-
-    metadata = {}
-    def find_field(pattern, text):
-        m = re.search(pattern, text, re.IGNORECASE)
-        return m.group(1).strip() if m else ""
-
-    metadata["Account Number"] = find_field(r"Account\s*(?:Number|No\.?)\s*[:\-]?\s*([0-9Xx\*\- ]+)", first_text)
-    metadata["IBAN"] = find_field(r"IBAN\s*[:\-]?\s*([A-Z0-9 ]+)", first_text)
-    metadata["Currency"] = find_field(r"Currency\s*[:\-]?\s*([A-Z]{3})", first_text) or "AED"
-    metadata["Period"] = find_field(r"(?:Statement\s*Period|Period)\s*[:\-]?\s*([^\n\r]+)", first_text)
-    metadata["Customer Name"] = find_field(r"(?:Customer\s*Name|Account\s*Holder|Name)\s*[:\-]?\s*([^\n\r]+)", first_text)
-    metadata["Bank"] = "FAB"
-
-    # ---------- TRANSACTIONS - Narm Wala Pattern ----------
-    transactions = []
-    # Date: 01/01/2024, 01-01-2024, 01.01.2024, 01 Jan 2024, 01-Jan-2024
-    date_pattern = re.compile(r"(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})", re.IGNORECASE)
-
-    for p_idx in range(processed_pages):
         try:
-            text = reader.pages[p_idx].extract_text() or ""
-        except:
-            continue
-        lines = text.split("\n")
-        for line in lines:
-            line = line.strip()
-            if len(line) < 10:
-                continue
-            dm = date_pattern.search(line)
-            if not dm:
-                continue
-            date_str = dm.group(1)
+            reader = PdfReader(pdf_path)
+        except PdfReadError:
+            return {"status": "error", "message": "Corrupted or invalid PDF file."}
 
-            # Numbers - 1,234.56, (1,234.56), 1234.56, -1,234.56
-            nums = re.findall(r"\(?\-?[\d,]+\.\d{2}\)?\-?", line)
-            if len(nums) < 1:
-                continue
+        if reader.is_encrypted:
+            return {
+                "status": "error",
+                "message": "This PDF is password-protected. Please remove the password and upload again."
+            }
 
-            # Description - Date hatado, Numbers hatado, baki bacha Description
-            desc_part = line.replace(date_str, "", 1)
-            for n in nums:
-                desc_part = desc_part.replace(n, "", 1)
-            desc = re.sub(r"\s+", " ", desc_part).strip()
-            # Choti si safai
-            desc = desc.replace("|", " ").strip()
-            if len(desc) < 3:
-                continue
-            # Header / Footer wali lines skip karo
-            if any(x in desc.upper() for x in ["BALANCE BROUGHT", "OPENING BALANCE", "TOTAL", "PAGE", "STATEMENT OF", "ACCOUNT STATEMENT"]):
-                continue
+        total_pages = len(reader.pages)
+        if total_pages == 0:
+            return {"status": "error", "message": "The uploaded PDF has 0 pages."}
 
-            balance = clean_amount(nums[-1])
-            debit = 0.0
-            credit = 0.0
+        # 2. Extract First Page & Verify Bank Identity
+        first_page_text = reader.pages[0].extract_text() or ""
+        if len(first_page_text.strip()) < 30:
+            return {
+                "status": "error",
+                "message": "Scanned/Image PDF detected. Only digital bank PDFs are supported."
+            }
 
-            if len(nums) >= 3:
-                debit = clean_amount(nums[-3])
-                credit = clean_amount(nums[-2])
-            elif len(nums) == 2:
-                amt = clean_amount(nums[0])
-                if len(transactions) == 0:
-                    # Pehli row - positive to credit, negative to debit
-                    if amt >= 0:
-                        credit = abs(amt)
-                    else:
-                        debit = abs(amt)
-                else:
-                    prev_bal = transactions[-1]["Balance"]
-                    if balance > prev_bal:
-                        credit = abs(amt)
-                    elif balance < prev_bal:
-                        debit = abs(amt)
-                    else:
-                        credit = abs(amt)
+        if "First Abu Dhabi Bank" not in first_page_text and "bankfab.com" not in first_page_text:
+            return {
+                "status": "error",
+                "message": "Unsupported Bank! Currently only First Abu Dhabi Bank (FAB) statements are supported."
+            }
+
+        # 3. Extract Account Metadata
+        iban_match = re.search(r"IBAN:\s*([A-Z0-9]+)", first_page_text)
+        acc_match = re.search(r"Account number:\s*(\d+)", first_page_text)
+        curr_match = re.search(r"Currency:\s*([A-Z]{3})", first_page_text)
+        period_match = re.search(r"Account statement:\s*(.+)", first_page_text)
+
+        metadata = {
+            "Bank": "First Abu Dhabi Bank (FAB)",
+            "Account Number": acc_match.group(1) if acc_match else "N/A",
+            "IBAN": iban_match.group(1) if iban_match else "N/A",
+            "Currency": curr_match.group(1) if curr_match else "AED",
+            "Period": period_match.group(1).strip() if period_match else "N/A",
+        }
+
+        # 4. Free vs Pro Page Limit
+        pages_to_process = total_pages if is_pro else min(3, total_pages)
+        full_text = ""
+
+        for i in range(pages_to_process):
+            page_text = reader.pages[i].extract_text() or ""
+            header_match = re.search(
+                r"(?:Posting\s+)?Date\s+Value\s+Date.*?Balance", page_text, re.DOTALL
+            )
+            if header_match:
+                table_part = page_text[header_match.end():]
             else:
-                # Sirf 1 number hai, wo Balance hai, transaction nahi
-                continue
+                table_part = page_text
+            table_part = table_part.split("This is a system generated document")[0]
+            full_text += "\n" + table_part.strip()
 
-            # Agar Debit aur Credit dono 0 hain to skip
-            if debit == 0 and credit == 0:
-                continue
+        if not full_text.strip():
+            return {
+                "status": "error",
+                "message": "Could not locate transaction table in this FAB PDF."
+            }
 
-            # Audit - Balance se verify
-            audit = "OK"
-            if len(transactions) > 0:
-                prev_bal = transactions[-1]["Balance"]
-                expected = round(prev_bal - debit + credit, 2)
-                if abs(expected - balance) > 1.5:
-                    audit = "MISMATCH"
+        # 5. Split Transactions
+        tx_pattern = re.compile(
+            r"(?=\b\d{2}-[A-Za-z]{3}-\d{4}\s+\d{2}-[A-Za-z]{3}-\d{4}\b)"
+        )
+        raw_blocks = [b.strip() for b in tx_pattern.split(full_text) if b.strip()]
 
-            transactions.append({
-                "Date": date_str,
-                "Value Date": date_str,
-                "Description": desc[:120],
-                "Debit": round(debit, 2),
-                "Credit": round(credit, 2),
-                "Balance": round(balance, 2),
-                "Category": get_category(desc),
-                "Audit Check": audit
-            })
+        row_regex = re.compile(
+            r"^(?P<date>\d{2}-[A-Za-z]{3}-\d{4})\s+"
+            r"(?P<val_date>\d{2}-[A-Za-z]{3}-\d{4})\s+"
+            r"(?P<desc>.*?)\s+"
+            r"(?P<amount>[\d,]+\.\d{2})\s+"
+            r"(?P<balance>[\d,]+\.\d{2})$",
+            re.DOTALL,
+        )
 
-    if len(transactions) == 0:
-        return {"error": "No transactions found. Please upload a valid digital FAB statement."}
+        transactions = []
+        for block in raw_blocks:
+            clean_block = " ".join(block.split())
+            match = row_regex.match(clean_block)
+            if match:
+                try:
+                    data = match.groupdict()
+                    amt_str = data["amount"].replace(",", "")
+                    bal_str = data["balance"]
+                    if bal_str.count(",") > 1:
+                        parts = bal_str.split(",")
+                        bal_str = "".join(parts[:-1]).replace(",", "") + "." + parts[-1]
+                    else:
+                        bal_str = bal_str.replace(",", "")
 
-    total_credit = round(sum(t["Credit"] for t in transactions), 2)
-    total_debit = round(sum(t["Debit"] for t in transactions), 2)
+                    amt = float(amt_str)
+                    bal = float(bal_str)
 
-    # ---------- EXCEL ----------
-    df = pd.DataFrame(transactions)
-    cat_summary = df.groupby("Category").agg(
-        Count=("Category", "count"),
-        Total_Debit=("Debit", "sum"),
-        Total_Credit=("Credit", "sum")
-    ).reset_index()
-    mismatch_count = len(df[df["Audit Check"] == "MISMATCH"])
+                    transactions.append({
+                        "Date": data["date"],
+                        "Value Date": data["val_date"],
+                        "Description": data["desc"],
+                        "Amount": amt,
+                        "Balance": bal,
+                    })
+                except ValueError:
+                    continue
 
-    with pd.ExcelWriter(output_excel, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="Transactions", index=False)
-        summary_data = [
-            ["Zabar - FAB Statement Summary", ""],
-            ["", ""],
-            ["Bank", "FAB"],
-            ["Account Number", metadata.get("Account Number", "")],
-            ["Customer Name", metadata.get("Customer Name", "")],
-            ["Currency", metadata.get("Currency", "AED")],
-            ["Period", metadata.get("Period", "")],
-            ["Total Pages", total_pages],
-            ["Processed Pages", processed_pages],
-            ["Locked Pages", locked_pages],
-            ["", ""],
-            ["Total Transactions", len(transactions)],
-            ["Total Credit", total_credit],
-            ["Total Debit", total_debit],
-            ["Mismatch Rows", mismatch_count],
-            ["", ""],
-            ["Category", "Count"],
+        if not transactions:
+            return {
+                "status": "error",
+                "message": "No valid transaction rows could be parsed."
+            }
+
+        df = pd.DataFrame(transactions)
+
+        # 6. Debit vs Credit via balance math + keyword fallback
+        debits = []
+        credits = []
+        audit_status = []
+        credit_keywords = [
+            "inward", "salary", "deposit", "reverse charges", "credit", "refund"
         ]
-        for _, r in cat_summary.iterrows():
-            summary_data.append([r["Category"], int(r["Count"])])
-        sum_df = pd.DataFrame(summary_data, columns=["Field", "Value"])
-        sum_df.to_excel(writer, sheet_name="Summary & Audit", index=False, header=False)
 
-        ws = writer.sheets["Transactions"]
-        header_fill = PatternFill(start_color="231812", end_color="231812", fill_type="solid")
-        header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
-        for cell in ws[1]:
+        for i in range(len(df)):
+            curr_bal = df.loc[i, "Balance"]
+            amt = df.loc[i, "Amount"]
+            desc_lower = df.loc[i, "Description"].lower()
+
+            if i == 0:
+                if any(k in desc_lower for k in credit_keywords):
+                    credits.append(amt)
+                    debits.append(0.0)
+                else:
+                    debits.append(amt)
+                    credits.append(0.0)
+                audit_status.append("Opening Row")
+            else:
+                prev_bal = df.loc[i - 1, "Balance"]
+                if round(prev_bal + amt, 2) == round(curr_bal, 2):
+                    credits.append(amt)
+                    debits.append(0.0)
+                    audit_status.append("OK")
+                elif round(prev_bal - amt, 2) == round(curr_bal, 2):
+                    debits.append(amt)
+                    credits.append(0.0)
+                    audit_status.append("OK")
+                else:
+                    if any(k in desc_lower for k in credit_keywords):
+                        credits.append(amt)
+                        debits.append(0.0)
+                    else:
+                        debits.append(amt)
+                        credits.append(0.0)
+                    audit_status.append("MISMATCH / CHECK")
+
+        df["Debit"] = debits
+        df["Credit"] = credits
+        df["Audit Check"] = audit_status
+        df = df[["Date", "Value Date", "Description", "Debit", "Credit", "Balance", "Audit Check"]]
+
+        # 7. Auto-Categorization
+        def categorize(desc):
+            d = desc.lower()
+            if "vat" in d or "charge" in d or "chgs" in d:
+                return "Bank Fees & VAT"
+            elif "salary" in d:
+                return "Salary / Payroll"
+            elif "utility" in d:
+                return "Utility Bills"
+            elif "debit card" in d:
+                return "Card / POS Expense"
+            elif "atm" in d:
+                return "ATM Cash"
+            elif "transfer" in d:
+                return "Fund Transfer"
+            return "Other"
+
+        df["Category"] = df["Description"].apply(categorize)
+
+        # 8. Export Multi-Sheet Excel
+        with pd.ExcelWriter(output_excel, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Transactions", index=False)
+            cat_summary = df.groupby("Category")[["Debit", "Credit"]].sum().reset_index()
+            cat_summary.to_excel(writer, sheet_name="Summary & Audit", index=False, startrow=7)
+
+        # 9. Styling (Matches Espresso Brown Theme)
+        wb = load_workbook(output_excel)
+        ws_tx = wb["Transactions"]
+        header_fill = PatternFill(start_color="3E2723", end_color="3E2723", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        warn_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+        for cell in ws_tx[1]:
             cell.fill = header_fill
             cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-        ws.freeze_panes = "A2"
-        ws.auto_filter.ref = ws.dimensions
-        widths = [14, 14, 55, 14, 14, 15, 14, 13]
-        for i, w in enumerate(widths, start=1):
-            ws.column_dimensions[get_column_letter(i)].width = w
-        red_fill = PatternFill(start_color="FDE8E8", end_color="FDE8E8", fill_type="solid")
-        for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-            if row[7].value == "MISMATCH":
+            cell.alignment = Alignment(horizontal="center")
+
+        for row in ws_tx.iter_rows(min_row=2, max_row=ws_tx.max_row):
+            if row[6].value == "MISMATCH / CHECK":
                 for c in row:
-                    c.fill = red_fill
+                    c.fill = warn_fill
 
-        ws2 = writer.sheets["Summary & Audit"]
-        ws2.column_dimensions["A"].width = 28
-        ws2.column_dimensions["B"].width = 28
-        ws2["A1"].font = Font(name="Calibri", bold=True, size=14, color="231812")
+        ws_sum = wb["Summary & Audit"]
+        ws_sum["A1"] = "FAB STATEMENT AUDIT REPORT"
+        ws_sum["A1"].font = Font(size=14, bold=True, color="3E2723")
 
-    return {
-        "metadata": metadata,
-        "tx_count": len(transactions),
-        "total_credit": total_credit,
-        "total_debit": total_debit,
-        "total_pages": total_pages,
-        "processed_pages": processed_pages,
-        "locked_pages": locked_pages
-    }
+        ws_sum["A2"] = f"Account No: {metadata['Account Number']}"
+        ws_sum["B2"] = f"IBAN: {metadata['IBAN']}"
+        ws_sum["A3"] = f"Period: {metadata['Period']}"
+        ws_sum["B3"] = f"Currency: {metadata['Currency']}"
+
+        ws_sum["A5"] = "Total Credits (Inflow):"
+        ws_sum["B5"] = round(df["Credit"].sum(), 2)
+        ws_sum["A6"] = "Total Debits (Outflow):"
+        ws_sum["B6"] = round(df["Debit"].sum(), 2)
+
+        for cell in ws_sum[8]:
+            cell.fill = header_fill
+            cell.font = header_font
+
+        for sheet in [ws_tx, ws_sum]:
+            for col in sheet.columns:
+                max_len = max((len(str(cell.value or "")) for cell in col), default=10)
+                sheet.column_dimensions[col[0].column_letter].width = min(max_len + 4, 45)
+
+        wb.save(output_excel)
+
+        return {
+            "status": "success",
+            "message": "FAB statement parsed successfully!",
+            "metadata": metadata,
+            "total_pages": total_pages,
+            "processed_pages": pages_to_process,
+            "locked_pages": total_pages - pages_to_process,
+            "tx_count": len(df),
+            "total_credit": round(df["Credit"].sum(), 2),
+            "total_debit": round(df["Debit"].sum(), 2),
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"An unexpected error occurred while processing the FAB statement: {str(e)}"
+        }
+
+
+# Example Usage (Testing ke liye)
+if __name__ == "__main__":
+    sample_pdf = "fab_statement.pdf"
+    output_file = "fab_parsed_report.xlsx"
+
+    result = process_fab_pdf(sample_pdf, output_file, is_pro=True)
+    print(result)
