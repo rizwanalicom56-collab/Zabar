@@ -51,12 +51,12 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
 }
 [data-testid="stFileUploader"] > label{ display:none !important; }
 
+/* Border HTML .app-box par hai, isliye yahan border/bg clean */
 [data-testid="stFileUploaderDropzone"]{
-  background:#FFFEFB !important;
-  border:2px dashed #E8D5B5 !important;
-  border-radius:20px !important;
-  padding:18px 14px !important;
-  height:242px !important;
+  background:transparent !important;
+  border:none !important;
+  padding:16px 12px !important;
+  min-height:225px !important;
   width:100% !important;
   display:flex !important;
   flex-direction:column !important;
@@ -65,11 +65,6 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   gap:10px !important;
   text-align:center !important;
   box-sizing:border-box !important;
-  transition:.25s;
-}
-[data-testid="stFileUploaderDropzone"]:hover{
-  border-color:var(--gold) !important;
-  background:#FFF9EF !important;
 }
 
 [data-testid="stFileUploaderDropzoneInstructions"] > *{ display:none !important; }
@@ -124,6 +119,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   justify-content:center !important;
   font-size:0 !important;
   position:relative;
+  transition:.25s;
 }
 [data-testid="stFileUploaderDropzone"] button *{ display:none !important; }
 [data-testid="stFileUploaderDropzone"] button::after{
