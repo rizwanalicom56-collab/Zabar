@@ -19,7 +19,6 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
 [data-testid="stMain"], .main, section.main, [class*="css"], button, input{
   font-family:'Poppins', sans-serif !important;
   overflow:hidden !important;
-  max-height:275px !important;
 }
 
 .stApp{
@@ -55,17 +54,18 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
 [data-testid="stFileUploaderDropzone"]{
   background:#FFFEFB !important;
   border:2px dashed #E8D5B5 !important;
-  border-radius:22px !important;
-  padding:22px 16px !important;
-  height:268px !important;
+  border-radius:20px !important;
+  padding:18px 14px !important;
+  height:242px !important;
   width:100% !important;
   display:flex !important;
   flex-direction:column !important;
   align-items:center !important;
   justify-content:center !important;
-  gap:12px !important;
+  gap:10px !important;
   text-align:center !important;
   box-sizing:border-box !important;
+  transition:.25s;
 }
 [data-testid="stFileUploaderDropzone"]:hover{
   border-color:var(--gold) !important;
@@ -80,21 +80,21 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   align-items:center !important;
   justify-content:center !important;
   text-align:center !important;
-  gap:8px !important;
+  gap:6px !important;
   margin:0 auto !important;
 }
 
 [data-testid="stFileUploaderDropzoneInstructions"]::before{
   content:"";
   display:block;
-  width:58px;
-  height:58px;
+  width:52px;
+  height:52px;
   margin:0 auto;
   background-color:var(--ink);
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/><line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/></svg>");
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/><line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/></svg>");
   background-repeat:no-repeat;
   background-position:center;
-  border-radius:16px;
+  border-radius:14px;
 }
 
 [data-testid="stFileUploaderDropzoneInstructions"]::after{
@@ -103,9 +103,9 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   width:100%;
   text-align:center;
   white-space:pre-line;
-  font-size:13.5px;
+  font-size:13px;
   color:#8a7a6e;
-  line-height:1.65;
+  line-height:1.55;
   font-weight:400;
 }
 
@@ -116,8 +116,8 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   border-radius:100px !important;
   padding:0 !important;
   width:100%;
-  max-width:250px;
-  height:44px;
+  max-width:240px;
+  height:42px;
   margin:0 auto !important;
   display:flex !important;
   align-items:center !important;
@@ -128,7 +128,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
 [data-testid="stFileUploaderDropzone"] button *{ display:none !important; }
 [data-testid="stFileUploaderDropzone"] button::after{
   content:"Select PDF";
-  font-size:14px;
+  font-size:13.5px;
   font-weight:600;
   color:#fff;
   letter-spacing:.2px;
