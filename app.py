@@ -2,6 +2,7 @@ import os
 import uuid
 import html as _html
 import streamlit as st
+import streamlit.components.v1 as components
 from parser import process_fab_pdf
 
 # ============ PAGE CONFIG ============
@@ -16,6 +17,74 @@ os.makedirs("temp_files", exist_ok=True)
 
 def H(s: str) -> str:
     return "\n".join(line.strip() for line in s.strip().splitlines())
+
+
+def send_live_height():
+    components.html(
+        """
+        <script>
+        (function() {
+          const parentWin = window.parent;
+          if (!parentWin || parentWin === window) return;
+
+          function measureContentHeight() {
+            const doc = parentWin.document;
+            if (!doc) return 244;
+
+            const container =
+              doc.querySelector('[data-testid="stAppViewContainer"] .main .block-container') ||
+              doc.querySelector('.main .block-container') ||
+              doc.querySelector('[data-testid="stAppViewContainer"]') ||
+              doc.body;
+
+            if (!container) return 244;
+
+            const rect = container.getBoundingClientRect();
+            const rawHeight = Math.max(
+              container.scrollHeight || 0,
+              container.offsetHeight || 0,
+              Math.ceil(rect.height || 0)
+            );
+
+            return Math.max(244, rawHeight + 12);
+          }
+
+          let lastSent = 0;
+          function postHeight(force = false) {
+            const h = measureContentHeight();
+            if (force || Math.abs(h - lastSent) >= 2) {
+              lastSent = h;
+              parentWin.postMessage({ type: "SALAMUM_HEIGHT", height: h }, "*");
+            }
+          }
+
+          const target =
+            parentWin.document.querySelector('[data-testid="stAppViewContainer"]') ||
+            parentWin.document.body;
+
+          if (target && typeof ResizeObserver !== "undefined") {
+            const ro = new ResizeObserver(() => postHeight());
+            ro.observe(target);
+          }
+
+          if (target && typeof MutationObserver !== "undefined") {
+            const mo = new MutationObserver(() => {
+              postHeight();
+              setTimeout(() => postHeight(true), 80);
+              setTimeout(() => postHeight(true), 250);
+            });
+            mo.observe(target, { childList: true, subtree: true, attributes: true });
+          }
+
+          parentWin.addEventListener("load", () => postHeight(true));
+          setTimeout(() => postHeight(true), 60);
+          setTimeout(() => postHeight(true), 300);
+          setTimeout(() => postHeight(true), 800);
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
 
 # ============ CSS ============
@@ -46,7 +115,8 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
 [data-testid="stToolbar"], [data-testid="stDecoration"],
 [data-testid="stStatusWidget"], .stDeployButton,
 [data-testid="stViewerBadge"], [class*="viewerBadge"],
-.stApp > footer, [data-testid="stBottom"]{
+.stApp > footer, [data-testid="stBottom"],
+[data-testid="stIFrame"]{
   display:none !important;
   visibility:hidden !important;
   height:0 !important;
@@ -275,3 +345,5 @@ if uploaded_pdf is not None:
               <div class="price">Go Pro — 19 AED</div>
             </div>
             """), unsafe_allow_html=True)
+
+send_live_height()
