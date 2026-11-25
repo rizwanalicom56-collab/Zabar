@@ -24,62 +24,70 @@ def send_live_height():
         """
         <script>
         (function() {
-          const parentWin = window.parent;
-          if (!parentWin || parentWin === window) return;
+          function getAppHeight() {
+            try {
+              const frameEl = window.frameElement;
+              const doc = frameEl && frameEl.ownerDocument ? frameEl.ownerDocument : document;
+              const root =
+                doc.querySelector('[data-testid="stAppViewContainer"]') ||
+                doc.body ||
+                doc.documentElement;
+              if (!root) return 244;
 
-          function measureContentHeight() {
-            const doc = parentWin.document;
-            if (!doc) return 244;
+              const children = Array.from(root.children || []);
+              let maxBottom = 0;
+              for (const el of children) {
+                const st = window.getComputedStyle(el);
+                if (st.display === "none" || st.visibility === "hidden") continue;
+                const r = el.getBoundingClientRect();
+                if (r.height > 0 && r.bottom > maxBottom) {
+                  maxBottom = r.bottom;
+                }
+              }
 
-            const container =
-              doc.querySelector('[data-testid="stAppViewContainer"] .main .block-container') ||
-              doc.querySelector('.main .block-container') ||
-              doc.querySelector('[data-testid="stAppViewContainer"]') ||
-              doc.body;
-
-            if (!container) return 244;
-
-            const rect = container.getBoundingClientRect();
-            const rawHeight = Math.max(
-              container.scrollHeight || 0,
-              container.offsetHeight || 0,
-              Math.ceil(rect.height || 0)
-            );
-
-            return Math.max(244, rawHeight + 12);
+              const measured = Math.max(
+                Math.ceil(maxBottom),
+                root.scrollHeight || 0,
+                root.offsetHeight || 0
+              );
+              return Math.max(244, measured + 14);
+            } catch (e) {
+              return 244;
+            }
           }
 
-          let lastSent = 0;
-          function postHeight(force = false) {
-            const h = measureContentHeight();
-            if (force || Math.abs(h - lastSent) >= 2) {
-              lastSent = h;
-              parentWin.postMessage({ type: "SALAMUM_HEIGHT", height: h }, "*");
+          let lastH = 0;
+          function emit(force) {
+            const h = getAppHeight();
+            if (force || Math.abs(h - lastH) >= 2) {
+              lastH = h;
+              window.parent.postMessage({ type: "SALAMUM_HEIGHT", height: h }, "*");
             }
           }
 
           const target =
-            parentWin.document.querySelector('[data-testid="stAppViewContainer"]') ||
-            parentWin.document.body;
+            (window.frameElement && window.frameElement.ownerDocument
+              ? window.frameElement.ownerDocument.querySelector('[data-testid="stAppViewContainer"]')
+              : null) || document.body;
 
           if (target && typeof ResizeObserver !== "undefined") {
-            const ro = new ResizeObserver(() => postHeight());
+            const ro = new ResizeObserver(() => emit(false));
             ro.observe(target);
           }
 
           if (target && typeof MutationObserver !== "undefined") {
             const mo = new MutationObserver(() => {
-              postHeight();
-              setTimeout(() => postHeight(true), 80);
-              setTimeout(() => postHeight(true), 250);
+              emit(false);
+              setTimeout(() => emit(true), 100);
+              setTimeout(() => emit(true), 300);
             });
             mo.observe(target, { childList: true, subtree: true, attributes: true });
           }
 
-          parentWin.addEventListener("load", () => postHeight(true));
-          setTimeout(() => postHeight(true), 60);
-          setTimeout(() => postHeight(true), 300);
-          setTimeout(() => postHeight(true), 800);
+          window.addEventListener("load", () => emit(true));
+          setTimeout(() => emit(true), 80);
+          setTimeout(() => emit(true), 350);
+          setTimeout(() => emit(true), 900);
         })();
         </script>
         """,
@@ -110,16 +118,26 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   color:var(--ink);
 }
 
-/* Streamlit branding, footer aur embed badge hide */
+/* Streamlit branding, footer aur viewer/built-with badges hide */
 #MainMenu, footer, header,
-[data-testid="stToolbar"], [data-testid="stDecoration"],
-[data-testid="stStatusWidget"], .stDeployButton,
-[data-testid="stViewerBadge"], [class*="viewerBadge"],
-.stApp > footer, [data-testid="stBottom"],
-[data-testid="stIFrame"]{
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+.stDeployButton,
+[data-testid="stViewerBadge"],
+[class*="viewerBadge"],
+[class*="stActionButton"],
+.stApp > footer,
+[data-testid="stBottom"],
+[data-testid="stBottomBlockContainer"]{
   display:none !important;
   visibility:hidden !important;
+  opacity:0 !important;
+  pointer-events:none !important;
   height:0 !important;
+  min-height:0 !important;
+  max-height:0 !important;
+  overflow:hidden !important;
 }
 
 .block-container{
