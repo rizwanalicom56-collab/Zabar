@@ -48,11 +48,19 @@ html, body, [class*="css"], .stApp, button, input{
   display:flex !important; flex-direction:column; align-items:center; justify-content:center; gap:6px;
 }
 
-/* Custom icon aur text */
+/* Custom sharp SVG icon */
 [data-testid="stFileUploaderDropzoneInstructions"]::before{
-  content:"📄"; display:flex; align-items:center; justify-content:center;
-  width:64px; height:64px; background:var(--ink); border-radius:18px; font-size:28px;
+  content:"";
+  display:block;
+  width:64px;
+  height:64px;
+  background-color:var(--ink);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/><line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/></svg>");
+  background-repeat:no-repeat;
+  background-position:center;
+  border-radius:18px;
 }
+
 [data-testid="stFileUploaderDropzoneInstructions"]::after{
   content:"Drop your FAB PDF here\\A or click to select from your device";
   white-space:pre-wrap; font-size:13.5px; color:#8a7a6e; line-height:1.7; font-weight:400;
@@ -80,7 +88,7 @@ html, body, [class*="css"], .stApp, button, input{
 @media(max-width:560px){
   .block-container{ padding:1rem .8rem !important; }
   [data-testid="stFileUploaderDropzone"]{ padding:26px 14px !important; border-radius:20px !important; }
-  [data-testid="stFileUploaderDropzoneInstructions"]::before{ width:56px; height:56px; font-size:24px; }
+  [data-testid="stFileUploaderDropzoneInstructions"]::before{ width:56px; height:56px; }
 }
 </style>
 """
