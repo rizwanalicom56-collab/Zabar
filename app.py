@@ -16,7 +16,7 @@ st.set_page_config(
 os.makedirs("temp_files", exist_ok=True)
 
 
-def send_to_parent(msg_type: str, payload: dict):
+def send_to_html(msg_type: str, payload: dict):
     safe_json = json.dumps({"type": msg_type, "payload": payload}, ensure_ascii=False)
     safe_json_js = safe_json.replace("</", "<\\/")
     components.html(
@@ -24,44 +24,20 @@ def send_to_parent(msg_type: str, payload: dict):
         <script>
         (function() {{
           const data = {safe_json_js};
-          function hideBadges() {{
-            try {{
-              const doc = window.parent && window.parent.document ? window.parent.document : document;
-              const selectors = [
-                '[data-testid="stViewerBadge"]',
-                '[class*="viewerBadge"]',
-                '[class*="stActionButton"]',
-                'footer',
-                '[data-testid="stBottom"]'
-              ];
-              for (const sel of selectors) {{
-                doc.querySelectorAll(sel).forEach((el) => {{
-                  el.style.setProperty("display", "none", "important");
-                  el.style.setProperty("visibility", "hidden", "important");
-                  el.style.setProperty("height", "0px", "important");
-                }});
-              }}
-            }} catch (e) {{}}
-          }}
-          hideBadges();
-          setTimeout(hideBadges, 120);
-          setTimeout(hideBadges, 500);
-          if (window.parent && window.parent !== window) {{
-            window.parent.postMessage(data, "*");
-          }}
+          try {{
+            if (window.parent && window.parent.parent && window.parent.parent !== window) {{
+              window.parent.parent.postMessage(data, "*");
+            }}
+          }} catch (e) {{}}
+          try {{
+            if (window.parent && window.parent !== window) {{
+              window.parent.postMessage(data, "*");
+            }}
+          }} catch (e) {{}}
         }})();
         </script>
         """,
         height=0,
-    )
-
-
-def notify_file_selected(filename: str):
-    send_to_parent(
-        "SALAMUM_FILE_SELECTED",
-        {
-            "filename": filename,
-        },
     )
 
 
@@ -110,8 +86,12 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
 
 .block-container{
   max-width:100% !important;
+  min-height:100vh !important;
   padding:0 !important;
   margin:0 !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
 }
 
 [data-testid="stVerticalBlock"],
@@ -126,14 +106,14 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
 [data-testid="stFileUploaderDropzone"]{
   background:transparent !important;
   border:none !important;
-  padding:20px 14px !important;
-  min-height:240px !important;
+  padding:14px 12px !important;
+  min-height:220px !important;
   width:100% !important;
   display:flex !important;
   flex-direction:column !important;
   align-items:center !important;
   justify-content:center !important;
-  gap:12px !important;
+  gap:10px !important;
   text-align:center !important;
   box-sizing:border-box !important;
 }
@@ -146,15 +126,15 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   align-items:center !important;
   justify-content:center !important;
   text-align:center !important;
-  gap:8px !important;
+  gap:6px !important;
   margin:0 auto !important;
 }
 
 [data-testid="stFileUploaderDropzoneInstructions"]::before{
   content:"";
   display:block;
-  width:52px;
-  height:52px;
+  width:50px;
+  height:50px;
   margin:0 auto;
   background-color:var(--ink);
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/><line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/></svg>");
@@ -171,7 +151,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   white-space:pre-line;
   font-size:13px;
   color:#8a7a6e;
-  line-height:1.55;
+  line-height:1.5;
   font-weight:400;
 }
 
@@ -205,7 +185,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"],
   background:#3a2a20 !important;
 }
 
-/* File select hone ke baad andar ke Streamlit default file list / spinner ko chhupa kar kaam HTML card par */
+/* Default file list aur spinner hide taake animation aur result HTML card mein chale */
 [data-testid="stFileUploaderFile"],
 [data-testid="stSpinner"]{
   display:none !important;
@@ -223,9 +203,9 @@ uploaded_pdf = st.file_uploader(
     label_visibility="collapsed",
 )
 
-# ============ PROCESS & SEND JSON ============
+# ============ CATCH FILE -> CALL HTML ANIMATION -> SEND JSON ============
 if uploaded_pdf is not None:
-    notify_file_selected(uploaded_pdf.name)
+    send_to_html("SALAMUM_SHOW_ANIMATION", {"filename": uploaded_pdf.name})
 
     file_id = str(uuid.uuid4())[:8]
     temp_pdf = os.path.join("temp_files", f"{file_id}_{uploaded_pdf.name}")
@@ -244,7 +224,7 @@ if uploaded_pdf is not None:
         if os.path.exists(out_xlsx):
             os.remove(out_xlsx)
 
-        send_to_parent(
+        send_to_html(
             "SALAMUM_RESULT",
             {
                 "status": "error",
@@ -270,7 +250,7 @@ if uploaded_pdf is not None:
         total_debit = float(result.get("total_debit", 0.0))
         locked_pages = int(result.get("locked_pages", 0))
 
-        send_to_parent(
+        send_to_html(
             "SALAMUM_RESULT",
             {
                 "status": "ok",
